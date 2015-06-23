@@ -104,16 +104,14 @@ static int csv_buf_read(struct scanner *s, size_t space)
 
 %% write data nofinal;
 
-static void
-scan_init(struct scanner *s)
+static void scan_init(struct scanner *s)
 {
     memset(s, 0, sizeof(struct scanner));
     s->curline = 1;
     %% write init;
 }
 
-static int
-check_buf(struct scanner *s)
+static int check_buf(struct scanner *s)
 {
     size_t have, space, readlen;
 
@@ -151,8 +149,7 @@ check_buf(struct scanner *s)
 
 #define return_token(t) token = t; s->data = s->ts
 
-static int
-scan(struct scanner *s)
+static int scan(struct scanner *s)
 {
     int token = 0;
 
@@ -181,12 +178,14 @@ scan(struct scanner *s)
     }
 }
 
-static void
-csv_read(struct scanner *s, csv_fn_t fn)
+static void csv_read(struct scanner *s, csv_fn_t fn)
 {
     while (1) {
         int token = scan(s);
         switch (token) {
+        case TK_EOL:
+            fn(token, s->curline - 1, NULL, 0);
+            break;
         case TK_Quote:
         case TK_String:
             fn(token, s->curline, s->data, s->len);
@@ -200,8 +199,7 @@ csv_read(struct scanner *s, csv_fn_t fn)
     }
 }
 
-void
-csv_fread(csv_fn_t fn, FILE *f)
+void csv_fread(csv_fn_t fn, FILE *f)
 {
     struct scanner s;
     scan_init(&s);
@@ -210,8 +208,7 @@ csv_fread(csv_fn_t fn, FILE *f)
     csv_read(&s, fn);
 }
 
-void
-csv_read_file(csv_fn_t fn, const char *name)
+void csv_read_file(csv_fn_t fn, const char *name)
 {
     FILE *f = fopen(name, "r");
     if (f != NULL) {
@@ -220,8 +217,7 @@ csv_read_file(csv_fn_t fn, const char *name)
     }
 }
 
-void
-csv_read_buf(csv_fn_t fn, const char *buf, size_t len)
+void csv_read_buf(csv_fn_t fn, const char *buf, size_t len)
 {
     struct scanner s;
     scan_init(&s);
