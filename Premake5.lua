@@ -24,18 +24,22 @@ project 'wlx_csv'
 --    targetdir 'bin'
     targetdir '$(COMMANDER_PATH)/Plugins/wlx/csv'
     
-
     includedirs {
-        'csv',
-    }
-    links {
         'csv',
     }
 
     files {
+        'csv/csv.h',
+        'csv/csv.c',
         'src/*.h',
         'src/*.c',
         'src/*.def',
+    }
+
+    prebuildcommands
+    {
+        '@echo on',
+        "ragel -T1 ../csv/csv.rl",
     }
 
     targetname 'wlx_csv'
@@ -45,20 +49,3 @@ project 'wlx_csv'
         debugdir '$(TargetDir)'
         debugcommand '$(COMMANDER_PATH)/TOTALCMD.EXE'
 
-project 'csv'
-    kind 'StaticLib'
-    targetdir 'lib'
-
-    files {
-        'csv/*.h',
-        'csv/csv.c',
-    }
-
-    prebuildcommands
-    {
-        '@echo on',
-        "ragel -T1 ../csv/csv.rl",
-    }
-
-    configuration 'Debug'
-        targetsuffix '_d'

@@ -142,6 +142,14 @@ static void read_csv_file(int token, int record_no, const char *field, int field
     }
 }
 
+#ifndef ListView_SetExtendedListViewStyle
+#define LVS_EX_GRIDLINES        0x00000001
+#define LVS_EX_FULLROWSELECT    0x00000020 // applies to report mode only
+#define LVM_SETEXTENDEDLISTVIEWSTYLE (LVM_FIRST + 54)   // optional wParam == mask
+#define ListView_SetExtendedListViewStyle(hwndLV, dw)\
+        (DWORD)SendMessage((hwndLV), LVM_SETEXTENDEDLISTVIEWSTYLE, 0, dw)
+#endif
+
 HWND __stdcall ListLoad(HWND ParentWin, char *FileToLoad, int ShowFlags)
 {
     HWND hwnd = NULL;
