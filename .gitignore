@@ -13,6 +13,7 @@
 *.a
 *.la
 *.lo
+*.exp
 
 # Shared objects (inc. Windows DLLs)
 *.dll
@@ -30,3 +31,14 @@
 
 # Debug files
 *.dSYM/
+*.ilk
+*.pdb
+
+# our
+build
+lib
+obj
+
+csv/csv.c
+*.wlx
+*.GID
