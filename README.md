@@ -9,6 +9,7 @@ usage:
 ```
 premake vs2010
 cd build
+msbuild build\wlx_csv.sln /t:rebuild /p:configuration=release
 ```
 or
 ```
