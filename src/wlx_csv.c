@@ -40,6 +40,70 @@ BOOL WINAPI DllMain(HANDLE hModule, DWORD ul_reason_for_call, LPVOID lpReserved)
 
 ////////////////////////////////////////////////////////////////////////////////
 
+int scan_multi_bytes(const char *field, int field_len)
+{
+    int i, n = 0, all_ascii = 1;
+    unsigned char c;
+
+    for (i = 0; i < field_len; ++i) {
+        c = (unsigned char) field[i];
+        if (c & 0x80) {
+            all_ascii = 0;
+        }
+
+        if (n == 0) {
+            if (c >= 0x80) {
+                if (c >= 0xFC && c <= 0xFD) {
+                    n = 5;
+                } else if (c >= 0xF8) {
+                    n = 4;
+                } else if (c >= 0xF0) {
+                    n = 3;
+                } else if (c >= 0xE0) {
+                    n = 2;
+                } else if (c >= 0xC0) {
+                    n = 1;
+                } else {
+                    return 0;
+                }
+            }
+        } else {
+            if ((c & 0xC0) != 0x80) {
+                return 0;
+            }
+            n--;
+        }
+    }
+
+    if (n > 0 || all_ascii) {
+        return 0;
+    }
+    
+    return 1;
+}
+
+void utf8_to_ansi(char *dest, const char *src, int sz)
+{
+    wchar_t _wquickbuf[BUFSIZ];
+
+    int len, ulen;
+    wchar_t *ustr;
+
+    ulen = MultiByteToWideChar(CP_UTF8, 0, src, sz, NULL, 0);
+    ustr = ulen < BUFSIZ ? _wquickbuf : (wchar_t *)malloc(ulen * sizeof(wchar_t));
+    MultiByteToWideChar(CP_UTF8, 0, src, sz, ustr, ulen);
+
+    len = WideCharToMultiByte(CP_ACP, 0, ustr, ulen, NULL, 0, NULL, NULL);
+    WideCharToMultiByte(CP_ACP, 0, ustr, ulen, dest, len, NULL, NULL);
+    dest[len] = 0;
+
+    if (ulen >= BUFSIZ) {
+        free(ustr);
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 static void listview_add_column(HWND hwnd, unsigned int col_idx, int width, char *head)
 {
     LV_COLUMN lv_col;
@@ -97,8 +161,12 @@ static void adjust_column_width(field_len)
 
 static char *get_field_buf(const char *field, int field_len)
 {
-    memcpy(field_buf, field, field_len);
-    field_buf[field_len] = '\0';
+    if (scan_multi_bytes(field, field_len)) {
+        utf8_to_ansi(field_buf, field, field_len);
+    } else {
+        memcpy(field_buf, field, field_len);
+        field_buf[field_len] = '\0';
+    }
     return field_buf;
 }
 
