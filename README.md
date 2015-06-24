@@ -7,13 +7,13 @@ Total Commander CSV Lister Plugin Sample
 
 usage:
 ```
-premake vs2010
+premake5 vs2010
 cd build
 msbuild build\wlx_csv.sln /t:rebuild /p:configuration=release
 ```
 or
 ```
-premake gmake
+premake5 gmake
 cd build
 make
 ```
