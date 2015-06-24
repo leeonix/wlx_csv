@@ -22,11 +22,11 @@ HINSTANCE hInst;    //hInstance
 HWND hMainWnd;      //our main wnd
 HWND hListView;
 
-BOOL WINAPI DllMain(HANDLE hModule, DWORD ul_reason_for_call, LPVOID lpReserved)
+BOOL WINAPI DllMain(HINSTANCE hModule, DWORD ul_reason_for_call, LPVOID lpReserved)
 {
     switch (ul_reason_for_call) {
     case DLL_PROCESS_ATTACH:
-        hInst = (HINSTANCE) hModule;
+        hInst = hModule;
         break;
     case DLL_PROCESS_DETACH:
         break;
