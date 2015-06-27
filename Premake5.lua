@@ -8,16 +8,17 @@ solution 'wlx_csv'
     location 'build'
     objdir 'obj'
 
-    configuration 'vs*'
+    filter { 'configurations:vs*' }
         defines { '_CRT_SECURE_NO_WARNINGS' }
 
-    configuration 'Debug'
-        flags { 'Symbols' }
+    filter { 'configurations:Debug' }
         defines { '_DEBUG' }
+        flags { 'Symbols' }
+        optimize 'Debug'
 
-    configuration 'Release'
-        flags { 'Optimize' }
+    filter { 'configurations:Release' }
         defines { 'NDEBUG' }
+        optimize 'Full'
 
 project 'wlx_csv'
     kind 'SharedLib'
