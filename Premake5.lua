@@ -8,7 +8,7 @@ solution 'wlx_csv'
     location 'build'
     objdir 'obj'
 
-    filter { 'configurations:vs*' }
+    filter { 'action:vs*' }
         defines { '_CRT_SECURE_NO_WARNINGS' }
 
     filter { 'configurations:Debug' }
