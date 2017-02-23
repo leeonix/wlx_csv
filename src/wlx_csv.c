@@ -18,9 +18,44 @@
 #include <csv.h>
 #include "listplug.h"
 
-HINSTANCE hInst;    //hInstance
-HWND hMainWnd;      //our main wnd
-HWND hListView;
+#define buffer_size 4096
+
+static HINSTANCE hInst;    //hInstance
+static HWND hMainWnd;      //our main wnd
+static HWND hListView;
+
+static int sort_column;
+static BOOL asc_sort;
+
+#ifdef _DEBUG
+#define send_debug_str OutputDebugString
+static void send_debug_str_fmt(const char *fmt, ...)
+{
+    static char buffer[BUFSIZ * 8];
+
+    va_list args;
+    va_start(args, fmt);
+    _vsnprintf(buffer, (sizeof(buffer) / sizeof(char)) - 1, fmt, args);
+    va_end(args);
+
+    OutputDebugString(buffer);
+}
+#else
+#define send_debug_str(s)
+#define send_debug_str_fmt(fmt, ...)
+#endif
+
+// define for gcc
+#ifndef ListView_SetExtendedListViewStyle
+#define LVS_EX_GRIDLINES        0x00000001
+#define LVS_EX_FULLROWSELECT    0x00000020
+#define LVM_SETEXTENDEDLISTVIEWSTYLE (LVM_FIRST + 54)
+#define ListView_SetExtendedListViewStyle(hwndLV, dw)\
+    SendMessage((hwndLV), LVM_SETEXTENDEDLISTVIEWSTYLE, 0, dw)
+#endif
+
+static void setListViewSortIcon(HWND listView, int col, int sortOrder);
+static int CALLBACK listview_compare_fun(LPARAM lp1, LPARAM lp2, LPARAM sort_param);
 
 BOOL WINAPI DllMain(HINSTANCE hModule, DWORD ul_reason_for_call, LPVOID lpReserved)
 {
@@ -78,26 +113,26 @@ int scan_multi_bytes(const char *field, int field_len)
     if (n > 0 || all_ascii) {
         return 0;
     }
-    
+
     return 1;
 }
 
 void utf8_to_ansi(char *dest, const char *src, int sz)
 {
-    wchar_t _wquickbuf[BUFSIZ];
+    wchar_t _wquickbuf[buffer_size];
 
     int len, ulen;
     wchar_t *ustr;
 
     ulen = MultiByteToWideChar(CP_UTF8, 0, src, sz, NULL, 0);
-    ustr = ulen < BUFSIZ ? _wquickbuf : (wchar_t *)malloc(ulen * sizeof(wchar_t));
+    ustr = ulen < buffer_size ? _wquickbuf : (wchar_t *)malloc(ulen * sizeof(wchar_t));
     MultiByteToWideChar(CP_UTF8, 0, src, sz, ustr, ulen);
 
     len = WideCharToMultiByte(CP_ACP, 0, ustr, ulen, NULL, 0, NULL, NULL);
     WideCharToMultiByte(CP_ACP, 0, ustr, ulen, dest, len, NULL, NULL);
     dest[len] = 0;
 
-    if (ulen >= BUFSIZ) {
+    if (ulen >= buffer_size) {
         free(ustr);
     }
 }
@@ -136,8 +171,7 @@ static void listview_set_item(HWND hwnd, int item, int subitem, char *text)
     ListView_SetItem(hwnd, &lv_item);
 }
 
-static int field_no = 0;
-static char field_buf[BUFSIZ];
+static char field_buf[buffer_size];
 
 static int cal_width(int field_len)
 {
@@ -150,7 +184,7 @@ static int cal_width(int field_len)
     return result;
 }
 
-static void adjust_column_width(field_len)
+static void adjust_column_width(int field_len, int field_no)
 {
     int col_width = (int)ListView_GetColumnWidth(hListView, field_no);
     int field_width = cal_width(field_len);
@@ -172,52 +206,40 @@ static char *get_field_buf(const char *field, int field_len)
 
 static void read_csv_file(int token, int record_no, const char *field, int field_len)
 {
-    // No. one record is column
-    if (record_no == 1) {
-        switch (token) {
-        case TK_EOL:
-            field_no = -1;
-            break;
-        case TK_String:
-        case TK_Quote:
-            listview_add_column(hListView, field_no, cal_width(field_len), get_field_buf(field, field_len));
-            field_no += 1;
-            break;
-        }               // -----  end switch  -----
-    } else {
-        // field No is -1, then insert item.
-        if (field_no == -1) {
-            listview_insert_item(hListView, record_no - 2);
-            field_no = 0;
-        }
-        if (field_no >= 0) {
-            switch (token) {
-            case TK_EOL:
-                field_no = -1;
-                break;
-            case TK_String:
-            case TK_Quote:
-                adjust_column_width(field_len);
-                listview_set_item(hListView, record_no - 2, field_no, get_field_buf(field, field_len));
-                field_no += 1;
-                break;
-            }               // -----  end switch  -----
-        }
-    }
+    static int field_no = 0;
     if (token == TK_EOF || token == TK_ERR) {
         field_no = 0;
         field_buf[0] = '\0';
+        return;
     }
-}
 
-// define for gcc
-#ifndef ListView_SetExtendedListViewStyle
-#define LVS_EX_GRIDLINES        0x00000001
-#define LVS_EX_FULLROWSELECT    0x00000020
-#define LVM_SETEXTENDEDLISTVIEWSTYLE (LVM_FIRST + 54)
-#define ListView_SetExtendedListViewStyle(hwndLV, dw)\
-    SendMessage((hwndLV), LVM_SETEXTENDEDLISTVIEWSTYLE, 0, dw)
-#endif
+    // No. one record add column
+    if (record_no == 1) {
+        switch (token) {
+        case TK_String:
+        case TK_Quote: {
+            char buf[16];
+            sprintf(buf, "%d", field_no);
+            listview_add_column(hListView, field_no, cal_width(field_len), buf);
+        }
+        break;
+        }               // -----  end switch  -----
+    }
+    if (field_no == 0) {
+        listview_insert_item(hListView, record_no - 1);
+    }
+    switch (token) {
+    case TK_EOL:
+        field_no = 0;
+        break;
+    case TK_String:
+    case TK_Quote:
+        adjust_column_width(field_len, field_no);
+        listview_set_item(hListView, record_no - 1, field_no, get_field_buf(field, field_len));
+        field_no += 1;
+        break;
+    }               // -----  end switch  -----
+}
 
 HWND __stdcall ListLoad(HWND ParentWin, char *FileToLoad, int ShowFlags)
 {
@@ -228,11 +250,16 @@ HWND __stdcall ListLoad(HWND ParentWin, char *FileToLoad, int ShowFlags)
                         LVS_REPORT | LVS_SINGLESEL | LVS_SHOWSELALWAYS |
                         WS_CHILD | WS_VISIBLE | WS_BORDER | WS_TABSTOP,
                         r.left, r.top, r.right - r.left, r.bottom - r.top,
-                        ParentWin, NULL, hInst, NULL);
+                        ParentWin, (HMENU) 9000, hInst, NULL);
     if (hwnd != NULL) {
         hListView = hwnd;
-        ListView_SetExtendedListViewStyle(hwnd, LVS_EX_GRIDLINES | LVS_EX_FULLROWSELECT);
+        ListView_SetExtendedListViewStyle(hwnd, LVS_EX_GRIDLINES | LVS_EX_FULLROWSELECT | LVS_EX_DOUBLEBUFFER);
         csv_read_file(&read_csv_file, FileToLoad);
+
+        sort_column = 0;
+        asc_sort = TRUE;
+        ListView_SortItemsEx(hwnd, listview_compare_fun, 1);
+        setListViewSortIcon(hwnd, 0, 2);
         ShowWindow(hwnd, SW_SHOW);
     }
     return hwnd;
@@ -242,5 +269,78 @@ void __stdcall ListGetDetectString(char *DetectString, int maxlen)
 {
     strncpy(DetectString, "EXT=\"CSV\"", maxlen);
     DetectString[maxlen] = '\0';
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+// state can be
+// sortOrder - 0 neither, 1 descending, 2 ascending
+static void setListViewSortIcon(HWND listView, int col, int sortOrder)
+{
+    HWND headerWnd;
+    char headerText[256];
+    HD_ITEM item;
+    int numColumns, curCol;
+
+    headerWnd = ListView_GetHeader(listView);
+    numColumns = Header_GetItemCount(headerWnd);
+
+    for (curCol = 0; curCol < numColumns; curCol++) {
+        item.mask = HDI_FORMAT | HDI_TEXT;
+        item.pszText = headerText;
+        item.cchTextMax = sizeof(headerText) - 1;
+        SendMessage(headerWnd, HDM_GETITEM, curCol, (LPARAM)&item);
+
+        if ((sortOrder != 0) && (curCol == col))
+            switch (sortOrder) {
+            case 1:
+                item.fmt &= !HDF_SORTUP;
+                item.fmt |= HDF_SORTDOWN;
+                break;
+            case 2:
+                item.fmt &= !HDF_SORTDOWN;
+                item.fmt |= HDF_SORTUP;
+                break;
+            }
+        else {
+            item.fmt &= !HDF_SORTUP & !HDF_SORTDOWN;
+        }
+        item.fmt |= HDF_STRING;
+        item.mask = HDI_FORMAT | HDI_TEXT;
+        SendMessage(headerWnd, HDM_SETITEM, curCol, (LPARAM)&item);
+    }
+}
+
+static int CALLBACK listview_compare_fun(LPARAM lp1, LPARAM lp2, LPARAM sort_param)
+{
+    static char buf1[64], buf2[64];
+    int column = abs(sort_param) - 1;
+    ListView_GetItemText(hListView, lp1, column, buf1, sizeof(buf1));
+    ListView_GetItemText(hListView, lp2, column, buf2, sizeof(buf2));
+    return sort_param > 0 ? strcmp(buf1, buf2) : strcmp(buf2, buf1);
+}
+
+static void on_column_click(LPNMLISTVIEW listview_info)
+{
+    if (listview_info->iSubItem == sort_column) {
+        asc_sort = !asc_sort;
+    } else {
+        sort_column = listview_info->iSubItem;
+        asc_sort = TRUE;
+    }
+
+    ListView_SortItemsEx(hListView, listview_compare_fun, asc_sort ? sort_column + 1 : -(sort_column + 1));
+    setListViewSortIcon(hListView, sort_column, asc_sort + 1);
+}
+
+int __stdcall ListNotificationReceived(HWND ListWin, int Message, WPARAM wParam, LPARAM lParam)
+{
+    if (Message == WM_NOTIFY) {
+        LPNMHDR notify_info = (LPNMHDR)lParam;
+        if (notify_info->idFrom == 9000 && notify_info->code == LVN_COLUMNCLICK) {
+            on_column_click((LPNMLISTVIEW) lParam);
+        }
+    }
+    return DefWindowProc(ListWin, Message, wParam, lParam);
 }
 
