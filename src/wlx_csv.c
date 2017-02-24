@@ -21,7 +21,6 @@
 #define buffer_size 4096
 
 static HINSTANCE hInst;    //hInstance
-static HWND hMainWnd;      //our main wnd
 static HWND hListView;
 
 static int column_count;
@@ -56,9 +55,30 @@ static void send_debug_str_fmt(const char *fmt, ...)
 #ifndef ListView_SetExtendedListViewStyle
 #define LVS_EX_GRIDLINES        0x00000001
 #define LVS_EX_FULLROWSELECT    0x00000020
+#define LVS_EX_DOUBLEBUFFER     0x00010000
 #define LVM_SETEXTENDEDLISTVIEWSTYLE (LVM_FIRST + 54)
 #define ListView_SetExtendedListViewStyle(hwndLV, dw)\
     SendMessage((hwndLV), LVM_SETEXTENDEDLISTVIEWSTYLE, 0, dw)
+#endif
+
+#ifndef ListView_GetSelectionMark
+#define LVM_GETSELECTIONMARK    (LVM_FIRST + 66)
+#define ListView_GetSelectionMark(hwnd) \
+    (int)SendMessage((hwnd), LVM_GETSELECTIONMARK, 0, 0)
+#endif
+
+#ifndef ListView_GetHeader
+#define LVM_GETHEADER               (LVM_FIRST + 31)
+#define ListView_GetHeader(hwnd)\
+    (HWND)SendMessage((hwnd), LVM_GETHEADER, 0, 0L)
+#endif
+
+#ifndef HDF_SORTUP
+#define HDF_SORTUP              0x0400
+#endif
+
+#ifndef HDF_SORTDOWN
+#define HDF_SORTDOWN            0x0200
 #endif
 
 static void setListViewSortIcon(HWND listView, int col, int sortOrder);
@@ -80,6 +100,7 @@ static LRESULT WINAPI control_proc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
     }               // -----  end switch  -----
     return CallWindowProc(old_window_proc, hwnd, msg, wparam, lparam);
 }
+
 BOOL WINAPI DllMain(HINSTANCE hModule, DWORD ul_reason_for_call, LPVOID lpReserved)
 {
     switch (ul_reason_for_call) {
@@ -185,6 +206,7 @@ static void listview_copy_selected()
                 break;
             }
         }
+
         buf_len = strlen(field_buf);
         if (field_buf[buf_len - 1] == ',') {
             field_buf[buf_len - 1] = 0;
