@@ -47,10 +47,6 @@ static void send_debug_str_fmt(const char *fmt, ...)
 #define send_debug_str_fmt(fmt, ...)
 #endif
 
-#define CN_KEYDOWN 0xBD00
-#define CN_KEYUP   0xBD01
-#define CN_CHAR    0xBD02
-
 // define for gcc
 #ifndef ListView_SetExtendedListViewStyle
 #define LVS_EX_GRIDLINES        0x00000001
@@ -83,23 +79,6 @@ static void send_debug_str_fmt(const char *fmt, ...)
 
 static void setListViewSortIcon(HWND listView, int col, int sortOrder);
 static int CALLBACK listview_compare_fun(LPARAM lp1, LPARAM lp2, LPARAM sort_param);
-static void listview_copy_selected();
-
-static WNDPROC old_window_proc;
-
-static LRESULT WINAPI control_proc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
-{
-    switch (msg) {
-    case WM_KEYDOWN:
-    case CN_KEYDOWN:
-        if (wparam == 'C' && GetKeyState(VK_CONTROL) < 0) {
-            send_debug_str_fmt("hwnd:%X, msg:%X, wparam:%X, lparam:%X", hwnd, msg, wparam, lparam);
-            listview_copy_selected();
-        }
-        break;
-    }               // -----  end switch  -----
-    return CallWindowProc(old_window_proc, hwnd, msg, wparam, lparam);
-}
 
 BOOL WINAPI DllMain(HINSTANCE hModule, DWORD ul_reason_for_call, LPVOID lpReserved)
 {
@@ -338,9 +317,6 @@ HWND __stdcall ListLoad(HWND ParentWin, char *FileToLoad, int ShowFlags)
                         r.left, r.top, r.right - r.left, r.bottom - r.top,
                         ParentWin, (HMENU) 9000, hInst, NULL);
     if (hwnd != NULL) {
-        old_window_proc = (WNDPROC)(GetWindowLong(hwnd, GWL_WNDPROC));
-        send_debug_str_fmt("old_window_proc is 0x%08X", old_window_proc);
-        SetWindowLong(hwnd, GWL_WNDPROC, (LONG)(&control_proc));
         SetFocus(ParentWin);
 
         column_count = 0;
@@ -438,3 +414,16 @@ int __stdcall ListNotificationReceived(HWND ListWin, int Message, WPARAM wParam,
     return DefWindowProc(ListWin, Message, wParam, lParam);
 }
 
+int __stdcall ListSendCommand(HWND ListWin, int Command, int Parameter)
+{
+    switch (Command) {
+    case lc_copy:
+        send_debug_str("lc_copy");
+        listview_copy_selected();
+        break;
+
+    default:
+        break;
+    }               // -----  end switch  -----
+    return LISTPLUGIN_OK;
+}
