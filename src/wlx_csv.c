@@ -24,8 +24,11 @@ static HINSTANCE hInst;    //hInstance
 static HWND hMainWnd;      //our main wnd
 static HWND hListView;
 
+static int column_count;
 static int sort_column;
 static BOOL asc_sort;
+
+static char field_buf[buffer_size];
 
 #ifdef _DEBUG
 #define send_debug_str OutputDebugString
@@ -45,6 +48,10 @@ static void send_debug_str_fmt(const char *fmt, ...)
 #define send_debug_str_fmt(fmt, ...)
 #endif
 
+#define CN_KEYDOWN 0xBD00
+#define CN_KEYUP   0xBD01
+#define CN_CHAR    0xBD02
+
 // define for gcc
 #ifndef ListView_SetExtendedListViewStyle
 #define LVS_EX_GRIDLINES        0x00000001
@@ -56,7 +63,23 @@ static void send_debug_str_fmt(const char *fmt, ...)
 
 static void setListViewSortIcon(HWND listView, int col, int sortOrder);
 static int CALLBACK listview_compare_fun(LPARAM lp1, LPARAM lp2, LPARAM sort_param);
+static void listview_copy_selected();
 
+static WNDPROC old_window_proc;
+
+static LRESULT WINAPI control_proc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
+{
+    switch (msg) {
+    case WM_KEYDOWN:
+    case CN_KEYDOWN:
+        if (wparam == 'C' && GetKeyState(VK_CONTROL) < 0) {
+            send_debug_str_fmt("hwnd:%X, msg:%X, wparam:%X, lparam:%X", hwnd, msg, wparam, lparam);
+            listview_copy_selected();
+        }
+        break;
+    }               // -----  end switch  -----
+    return CallWindowProc(old_window_proc, hwnd, msg, wparam, lparam);
+}
 BOOL WINAPI DllMain(HINSTANCE hModule, DWORD ul_reason_for_call, LPVOID lpReserved)
 {
     switch (ul_reason_for_call) {
@@ -117,9 +140,9 @@ int scan_multi_bytes(const char *field, int field_len)
     return 1;
 }
 
-void utf8_to_ansi(char *dest, const char *src, int sz)
+static void utf8_to_ansi(char *dest, const char *src, int sz)
 {
-    wchar_t _wquickbuf[buffer_size];
+    static wchar_t _wquickbuf[buffer_size];
 
     int len, ulen;
     wchar_t *ustr;
@@ -139,6 +162,48 @@ void utf8_to_ansi(char *dest, const char *src, int sz)
 
 ////////////////////////////////////////////////////////////////////////////////
 
+static void listview_copy_selected()
+{
+    int index = ListView_GetSelectionMark(hListView);
+    if (index >= 0) {
+        char *s = field_buf;
+        int count = sizeof(field_buf);
+        int left_count = count;
+        int i, buf_len;
+        for (i = 0; i < column_count; ++i) {
+            ListView_GetItemText(hListView, index, i, s, left_count);
+            count = strlen(s);
+            if (count == 0) {
+                break;
+            }
+            s[count] = ',';
+            s[count + 1] = 0;
+            s += count + 1;
+
+            left_count -= count;
+            if (left_count <= 0) {
+                break;
+            }
+        }
+        buf_len = strlen(field_buf);
+        if (field_buf[buf_len - 1] == ',') {
+            field_buf[buf_len - 1] = 0;
+        }
+
+        send_debug_str(field_buf);
+
+        if (OpenClipboard(NULL)) {
+            HGLOBAL h = GlobalAlloc(GMEM_MOVEABLE, buf_len + 1);
+            char *data = (char *) GlobalLock(h);
+            memcpy(data, field_buf, buf_len + 1);
+            EmptyClipboard();
+            SetClipboardData(CF_TEXT, data);
+            GlobalUnlock(h);
+            CloseClipboard();
+        }
+    }
+}
+
 static void listview_add_column(HWND hwnd, unsigned int col_idx, int width, char *head)
 {
     LV_COLUMN lv_col;
@@ -148,6 +213,7 @@ static void listview_add_column(HWND hwnd, unsigned int col_idx, int width, char
     lv_col.pszText = head;
     lv_col.cx  = width;
     ListView_InsertColumn(hwnd, col_idx, (LPARAM)&lv_col);
+    column_count += 1;
 }
 
 static void listview_insert_item(HWND hwnd, int item)
@@ -170,8 +236,6 @@ static void listview_set_item(HWND hwnd, int item, int subitem, char *text)
     lv_item.cchTextMax = strlen(text);
     ListView_SetItem(hwnd, &lv_item);
 }
-
-static char field_buf[buffer_size];
 
 static int cal_width(int field_len)
 {
@@ -252,14 +316,22 @@ HWND __stdcall ListLoad(HWND ParentWin, char *FileToLoad, int ShowFlags)
                         r.left, r.top, r.right - r.left, r.bottom - r.top,
                         ParentWin, (HMENU) 9000, hInst, NULL);
     if (hwnd != NULL) {
-        hListView = hwnd;
-        ListView_SetExtendedListViewStyle(hwnd, LVS_EX_GRIDLINES | LVS_EX_FULLROWSELECT | LVS_EX_DOUBLEBUFFER);
-        csv_read_file(&read_csv_file, FileToLoad);
+        old_window_proc = (WNDPROC)(GetWindowLong(hwnd, GWL_WNDPROC));
+        send_debug_str_fmt("old_window_proc is 0x%08X", old_window_proc);
+        SetWindowLong(hwnd, GWL_WNDPROC, (LONG)(&control_proc));
+        SetFocus(ParentWin);
 
+        column_count = 0;
         sort_column = 0;
         asc_sort = TRUE;
+
+        hListView = hwnd;
+        ListView_SetExtendedListViewStyle(hwnd, LVS_EX_GRIDLINES | LVS_EX_FULLROWSELECT | LVS_EX_DOUBLEBUFFER);
+
+        csv_read_file(&read_csv_file, FileToLoad);
         ListView_SortItemsEx(hwnd, listview_compare_fun, 1);
         setListViewSortIcon(hwnd, 0, 2);
+
         ShowWindow(hwnd, SW_SHOW);
     }
     return hwnd;
@@ -313,7 +385,7 @@ static void setListViewSortIcon(HWND listView, int col, int sortOrder)
 
 static int CALLBACK listview_compare_fun(LPARAM lp1, LPARAM lp2, LPARAM sort_param)
 {
-    static char buf1[64], buf2[64];
+    char buf1[64], buf2[64];
     int column = abs(sort_param) - 1;
     ListView_GetItemText(hListView, lp1, column, buf1, sizeof(buf1));
     ListView_GetItemText(hListView, lp2, column, buf2, sizeof(buf2));
@@ -336,7 +408,7 @@ static void on_column_click(LPNMLISTVIEW listview_info)
 int __stdcall ListNotificationReceived(HWND ListWin, int Message, WPARAM wParam, LPARAM lParam)
 {
     if (Message == WM_NOTIFY) {
-        LPNMHDR notify_info = (LPNMHDR)lParam;
+        LPNMHDR notify_info = (LPNMHDR) lParam;
         if (notify_info->idFrom == 9000 && notify_info->code == LVN_COLUMNCLICK) {
             on_column_click((LPNMLISTVIEW) lParam);
         }
