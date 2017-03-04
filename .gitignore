@@ -38,6 +38,7 @@
 build
 lib
 obj
+tags
 
 csv/csv.c
 *.wlx

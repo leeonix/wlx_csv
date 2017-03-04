@@ -1,20 +1,43 @@
 
+externalrule 'ragel'
+    location 'ragel'
+    filename 'ragel'
+    fileextension '.rl'
+    propertydefinition {
+        name = 'OutputFileName',
+    }
+    propertydefinition {
+        name = 'Outputs',
+    }
+    propertydefinition {
+        name = 'CodeStyle',
+    }
+
 solution 'wlx_csv'
     configurations { 'Debug', 'Release' }
     language 'C'
-    defines { 'WIN32', '_WINDOWS' }
+    defines { 'WIN32', '_WIN32', 'WINDOWS', '_WINDOWS' }
     flags { 'StaticRuntime' }
+    characterset ("MBCS")
 
     location 'build'
     objdir 'obj'
+
+    rules { 'ragel' }
+    ragelVars {
+        OutputFileName = '../csv/%(Filename).c',
+        Outputs        = '%(OutputFileName)',
+        CodeStyle      = '1',
+    }
 
     filter { 'action:vs*' }
         defines { '_CRT_SECURE_NO_WARNINGS' }
 
     filter { 'configurations:Debug' }
         defines { '_DEBUG' }
-        flags { 'Symbols' }
         optimize 'Debug'
+        symbols 'On'
+        symbolspath '$(OutDir)$(TargetName).pdb'
 
     filter { 'configurations:Release' }
         defines { 'NDEBUG' }
@@ -31,16 +54,10 @@ project 'wlx_csv'
 
     files {
         'csv/csv.h',
-        'csv/csv.c',
+        'csv/csv.rl',
         'src/*.h',
         'src/*.c',
         'src/*.def',
-    }
-
-    prebuildcommands
-    {
-        '@echo on',
-        "ragel -T1 ../csv/csv.rl",
     }
 
     targetname 'wlx_csv'
